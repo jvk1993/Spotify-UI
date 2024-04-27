@@ -1,4 +1,12 @@
-﻿@inherits LayoutComponentBase
+﻿@using SpotifyUI.Services
+@using SpotifyUI.Services.Interfaces
+@using System.Text
+@using System.Security.Cryptography
+@inherits LayoutComponentBase
+@inject ISpotifyAuthenticationService authService
+@inject IConfiguration configuration
+@inject IJSRuntime JSRuntime
+
 <div class="page">
     <div class="sidebar">
         <NavMenu />
@@ -7,6 +15,7 @@
     <main>
         <div class="top-row px-4">
             <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+            <button @onclick="Authenticate">Login</button>
         </div>
 
         <article class="content px-4">
@@ -14,3 +23,54 @@
         </article>
     </main>
 </div>
+@code{
+    private const string PossibleChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    private const int LengthOfCodeVerifier = 128;
+    private const string ClientId = "fae0cc5efc67489693f273d0031c1f71";
+    private const string ResponseType = "code";
+    private const string CodeChallangeMethod = "S256";
+    private const string RedirectURL = "https://localhost:7260";
+    private const string BaseUrl = "https://accounts.spotify.com/authorize";
+    private readonly RandomNumberGenerator _randomNumberGenerator = RandomNumberGenerator.Create();
+
+    private async Task Authenticate(){
+        string challangeCode = GetChallangeCode();
+        string url = $"{BaseUrl}?client_id={ClientId}&response_type={ResponseType}&redirect_uri={RedirectURL}&code_challenge_method={CodeChallangeMethod}&code_challenge={challangeCode}";
+        await JSRuntime.InvokeAsync<object>("open", url, "_blank");
+    }
+
+    private string GetChallangeCode()
+    {
+        string randomString = GenerateRandomString();
+        byte[] bytes = CreateHashValueFromString(randomString);
+        string base64String = CreateBase64FromByteArray(bytes);
+        return base64String;
+    }
+
+    private string GenerateRandomString()
+    {
+        byte[] randomBytes = new byte[LengthOfCodeVerifier];
+        _randomNumberGenerator.GetBytes(randomBytes);
+
+        // Map the random bytes to characters from the allowed set
+        StringBuilder result = new(LengthOfCodeVerifier);
+        foreach (byte b in randomBytes)
+        {
+            result.Append(PossibleChars[b % PossibleChars.Length]);
+        }
+        return result.ToString();
+    }
+
+    private static byte[] CreateHashValueFromString(string randomString)
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes(randomString); // Use UTF-8 encoding
+        byte[] hash = SHA256.HashData(bytes);
+        return hash;
+    }
+
+    private static string CreateBase64FromByteArray(byte[] bytes)
+    {
+        string base64 = Convert.ToBase64String(bytes);
+        return base64;
+    }
+}
